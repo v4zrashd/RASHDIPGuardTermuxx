@@ -18,8 +18,18 @@ fi
 PY=python3
 command -v python >/dev/null 2>&1 && PY=python
 
-DIR="$(cd "$(dirname "$0")" && pwd)"
-cp "$DIR/v4zip.py" "$PREFIX/bin/v4zip"
+RAW="https://raw.githubusercontent.com/v4zrashd/RASHDIPGuardTermuxx/main"
+DIR="$(cd "$(dirname "$0" 2>/dev/null)" 2>/dev/null && pwd || echo "")"
+SRC=""
+if [ -n "$DIR" ] && [ -f "$DIR/v4zip.py" ]; then
+  SRC="$DIR/v4zip.py"
+else
+  echo "[*] Downloading v4zip.py..."
+  TMPD="$(mktemp -d)"
+  curl -fsSL "$RAW/v4zip.py" -o "$TMPD/v4zip.py"
+  SRC="$TMPD/v4zip.py"
+fi
+cp "$SRC" "$PREFIX/bin/v4zip"
 chmod +x "$PREFIX/bin/v4zip"
 
 mkdir -p "$HOME/.v4zip"
