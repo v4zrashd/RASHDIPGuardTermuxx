@@ -35,7 +35,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
-VERSION = "1.0"
+VERSION = "1.1"
 APP_NAME = "V4Z IP Guard"
 CHANNEL = "https://t.me/rashdteem"
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".v4zip")
@@ -737,11 +737,80 @@ def cmd_proxy_run(args):
     return 0
 
 
+def _write_proxy_env(proxy):
+    """Write shell exports for the active proxy (stays on this device)."""
+    ensure_data_dir()
+    path = os.path.join(DATA_DIR, "proxy.env")
+    auth = ""
+    if proxy.get("username"):
+        auth = f"{proxy['username']}:{proxy.get('password') or ''}@"
+    url = f"{proxy['scheme']}://{auth}{proxy['host']}:{proxy['port']}"
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(f"export http_proxy='{url}'\n")
+        fh.write(f"export https_proxy='{url}'\n")
+        fh.write(f"export HTTP_PROXY='{url}'\n")
+        fh.write(f"export HTTPS_PROXY='{url}'\n")
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return path
+
+
+def cmd_proxy_auto(args):
+    banner()
+    proxies, _path = _proxy_preamble()
+    if proxies is None:
+        return 1
+    interval = max(5, int(args.interval))
+    cycles = int(args.cycles)  # 0 = forever
+    print(c(f"Auto-rotate ON: switching every {interval}s. Ctrl+C to stop.",
+            CYAN + BOLD))
+    print("In another Termux session, use the active proxy with:")
+    print(c("  source ~/.v4zip/proxy.env", DIM))
+    idx = 0
+    done_cycles = 0
+    try:
+        while True:
+            chosen = None
+            for _try in range(len(proxies)):
+                cand = proxies[idx % len(proxies)]
+                idx += 1
+                res = test_one_proxy(cand)
+                if res["ok"]:
+                    chosen = res
+                    break
+                print(f"  skip: {mask_proxy(cand)} ({res['error']})")
+            stamp = datetime.now().strftime("%H:%M:%S")
+            if chosen:
+                env_path = _write_proxy_env(chosen)
+                log_ip({"ip": chosen.get("exit_ip"),
+                        "country": chosen.get("country"),
+                        "city": chosen.get("city"),
+                        "isp": chosen.get("isp"),
+                        "source": "proxy-auto"}, note="auto-rotate")
+                print(c(f"[{stamp}] ACTIVE {mask_proxy(chosen)} -> exit "
+                        f"{chosen['exit_ip']} ({chosen.get('country')}) "
+                        f"{chosen['ms']} ms", GREEN))
+                print(c(f"        env updated: {env_path}", DIM))
+            else:
+                print(c(f"[{stamp}] no working proxy this cycle", RED))
+            done_cycles += 1
+            if cycles and done_cycles >= cycles:
+                break
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print(c("\nAuto-rotate stopped.", YELLOW))
+    return 0
+
+
 def cmd_proxy(args):
     if args.proxy_cmd == "test":
         return cmd_proxy_test(args)
     if args.proxy_cmd == "run":
         return cmd_proxy_run(args)
+    if args.proxy_cmd == "auto":
+        return cmd_proxy_auto(args)
     return cmd_proxy_test(args)
 
 
@@ -785,8 +854,8 @@ def menu():
         "5": ("Privacy score", lambda: cmd_score(None)),
         "6": ("Show IP history (log)", lambda: cmd_log(10)),
         "7": ("Test my proxies (proxies.txt)", lambda: cmd_proxy_test(None)),
-        "8": ("Rotate proxies (demo)", lambda: cmd_proxy_run(
-            type("A", (), {"rounds": 3, "delay": 2})())),
+        "8": ("Auto-rotate proxies (every 5 min)", lambda: cmd_proxy_auto(
+            type("A", (), {"interval": 300, "cycles": 0})())),
         "9": ("Save session report", lambda: cmd_report(None)),
         "0": ("Exit", None),
     }
@@ -840,6 +909,12 @@ def build_parser():
     p_run = proxy_sub.add_parser("run")
     p_run.add_argument("--rounds", type=int, default=3)
     p_run.add_argument("--delay", type=int, default=2)
+    p_auto = proxy_sub.add_parser("auto",
+                                  help="auto-switch proxy on an interval")
+    p_auto.add_argument("--interval", type=int, default=300,
+                        help="seconds between switches (default 300 = 5 min)")
+    p_auto.add_argument("--cycles", type=int, default=0,
+                        help="stop after N switches (0 = keep going)")
     return parser
 
 

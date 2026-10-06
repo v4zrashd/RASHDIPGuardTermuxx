@@ -33,6 +33,7 @@ v4zip
 | `v4zip report` | Save a text session report |
 | `v4zip proxy test` | Test proxies from your local `proxies.txt` |
 | `v4zip proxy run` | Rotate through your list, showing each exit IP |
+| `v4zip proxy auto` | Auto-switch proxy every 5 minutes (writes `~/.v4zip/proxy.env`) |
 
 ## Proxies (optional)
 
