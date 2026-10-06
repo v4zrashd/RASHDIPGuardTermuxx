@@ -649,7 +649,12 @@ def test_one_proxy(proxy, timeout=12):
                 timeout=timeout)
         ms = int((time.time() - started) * 1000)
         if status != 200:
-            return {**proxy, "ok": False, "error": f"HTTP {status}", "ms": ms}
+            if status == 407:
+                err = ("proxy alive but auth required (407) - your current IP "
+                       "is not whitelisted, or user/pass is wrong/missing")
+            else:
+                err = f"HTTP {status}"
+            return {**proxy, "ok": False, "error": err, "ms": ms}
         data = json.loads(body)
         if data.get("status") != "success":
             return {**proxy, "ok": False, "error": "bad response", "ms": ms}
